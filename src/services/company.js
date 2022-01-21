@@ -2,7 +2,7 @@ const axios = require('axios').default
 const { Company } = require('../models/index')
 
 const companyService = () => {
-    const getCompanyByCnpjAndLocale = async (cnpjDto) => {
+    const getCompanyByCnpjAndLocale = async (cnpjDto, typeConsult) => {
         let resultCompany = {}
 
         await axios.get('https://www.receitaws.com.br/v1/cnpj/'+cnpjDto).then(async (res) => {
@@ -42,11 +42,10 @@ const companyService = () => {
                 resultCompany = {
                     status: 404,
                     message: 'Company not found!',
-                    error: 'Inform a valid CNPJ to consult and register a company!'
+                    error: 'Inform a valid CNPJ to consult, register and update a company!'
                 }
             }  
         }).catch((error) => {
-            console.log(error.response)
             resultCompany = { 
                status: error.response.status,
                message: error.response.statusText,
@@ -54,30 +53,34 @@ const companyService = () => {
             }
         })
 
-        return await checkQueryResult(resultCompany)
+        return await checkQueryResult(resultCompany, typeConsult)
     }
 
-    const checkQueryResult = async (queryResult) => {
-        if (queryResult.status === 200) {            
+    const checkQueryResult = async (companyDto, typeDto) => {
+        if (companyDto.status === 200) {            
             const validationCompanyDTO = await Company.findOne({
                 where: {
-                    cnpj: queryResult.cnpj
+                    cnpj: companyDto.cnpj
                 }
             })
 
             if (validationCompanyDTO != null) {
-                const data = {
-                    status: 200,
-                    message: 'Company found successfully!',
-                    company: queryResult
-                }
+                if (typeDto === 'get') {
+                    const data = {
+                        status: 200,
+                        message: 'Company found successfully!',
+                        company: companyDto
+                    }
 
-                return data
+                    return data
+                } else {
+                    return await updateCompany(companyDto)
+                }
             } else {
-                return await addCompany(queryResult)
+                return await addCompany(companyDto)
             }
         } else {
-            return queryResult
+            return companyDto
         }
     }
 
@@ -102,7 +105,55 @@ const companyService = () => {
         }
     }
 
-    return { getCompanyByCnpjAndLocale }
+    const updateCompany = async (companyDto) => {
+        console.log(companyDto)
+        try {
+            await Company.update(
+                {
+                    ...companyDto
+                },
+                { 
+                    where: { 
+                        cnpj: companyDto.cnpj
+                    } 
+                }
+            )
+
+            const data = {
+                status: 200,
+                message: 'Company successfully updated!',
+                company: companyDto
+            }
+
+            return data
+        } catch (error) {
+            throw error
+        }
+    }
+
+    const deleteCompany = async (cnpjDto) => {
+        const validationCompanyDelete = await Company.findOne({
+            where: {
+                cnpj: cnpjDto
+            }
+        })
+
+        if (validationCompanyDelete === null) {
+            throw new Error('Company not found!')
+        }
+
+        try {
+            await Company.destroy({
+                where: {
+                    cnpj: cnpjDto
+                }
+            })
+        } catch (error) {
+            throw error
+        }
+    }
+
+    return { getCompanyByCnpjAndLocale, deleteCompany }
 }
 
 module.exports = companyService
