@@ -1,12 +1,10 @@
 const axios = require('axios').default
+const { Company } = require('../models/index')
 
-class CompanyService {
-    constructor(CompanyModel) {
-        this.company = CompanyModel
-    }
-
-    async getCompanyByCnpj(cnpjDto){
+const companyService = () => {
+    const getCompanyByCnpjAndLocale = async (cnpjDto) => {
         let resultCompany = {}
+
         await axios.get('https://www.receitaws.com.br/v1/cnpj/'+cnpjDto).then(async (res) => {
             if (res.data.status !== 'ERROR') {
                 var dateFormatParts = res.data.abertura.split('/')
@@ -21,43 +19,90 @@ class CompanyService {
                     legalNature: res.data.natureza_juridica,
                     cep: res.data.cep.replace(/\D+/g, ''),
                     publicPlace: res.data.logradouro,
-                    ibgeCode: '12212112',
-                    city: res.data.municipio,
-                    state: res.data.uf,
-                    country: 'PAIS'
+                    city: res.data.municipio.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''),
+                    state: res.data.uf
                 }
+
+                await axios.get('https://servicodados.ibge.gov.br/api/v1/localidades/estados/'+res.data.uf+'/municipios').then(async (res) => {
+                    await res.data.forEach(element => {
+                        if (resultCompany.city === element.nome.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')) {
+                            resultCompany.ibgeCode = element.id
+                            resultCompany.country = 'BRASIL' // O CNPJ É UNICO NO PAIS BRASIL
+                            resultCompany.status = 200
+                        }
+                    })
+                }).catch((error) => {
+                    resultCompany = { 
+                        status: 400,
+                        message: 'Company not found!',
+                        error: error
+                     }
+                })
             } else {
-                resultCompany = res.data
+                resultCompany = {
+                    status: 404,
+                    message: 'Company not found!',
+                    error: 'Inform a valid CNPJ to consult and register a company!'
+                }
+            }  
+        }).catch((error) => {
+            console.log(error.response)
+            resultCompany = { 
+               status: error.response.status,
+               message: error.response.statusText,
+               error: 'User sent too many requests in a given time!'
             }
         })
 
-        if (resultCompany.status !== 'ERROR') {
-            const validationCompanyDTO = await this.company.findOne({
+        return await checkQueryResult(resultCompany)
+    }
+
+    const checkQueryResult = async (queryResult) => {
+        if (queryResult.status === 200) {            
+            const validationCompanyDTO = await Company.findOne({
                 where: {
-                    cnpj: resultCompany.cnpj.replace(/\D+/g, '')
+                    cnpj: queryResult.cnpj
                 }
             })
-    
+
             if (validationCompanyDTO != null) {
-                console.log('entrou 1')
-                return resultCompany
+                const data = {
+                    status: 200,
+                    message: 'Company found successfully!',
+                    company: queryResult
+                }
+
+                return data
             } else {
-                console.log('entrou 2')
-                this.addCompany(resultCompany)
-                return resultCompany
+                return await addCompany(queryResult)
             }
         } else {
-            return resultCompany
+            return queryResult
         }
     }
 
-    async addCompany(companyDto) {
+    const addCompany = async (companyDto) => {
         try {
-            await this.company.create(companyDto)
+            await Company.create(companyDto)
+
+            const data = {
+                status: 200,
+                message: 'Company found successfully!',
+                company: companyDto
+            }
+
+            return data
         } catch (error) {
-            throw error
+            const data = {
+                status: 400,
+                message: 'Error adding company',
+                error: error
+            }
+            return data
         }
     }
+
+    return { getCompanyByCnpjAndLocale }
 }
 
-module.exports = CompanyService
+module.exports = companyService
