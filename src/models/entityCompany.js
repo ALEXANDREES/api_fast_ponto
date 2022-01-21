@@ -22,7 +22,7 @@ const Company = configSequelize.define('EntityCompany', {
         allowNull: false
     },
     mainActivity: {
-        type: Sequelize.STRING(100),
+        type: Sequelize.JSON,
         allowNull: false
     },
     openingDate: {
